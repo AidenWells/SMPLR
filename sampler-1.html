@@ -1,0 +1,1162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>SMPLR</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Bebas+Neue&display=swap');
+
+  :root {
+    --bg: #0a0a0a;
+    --surface: #141414;
+    --surface2: #1e1e1e;
+    --accent: #ff3c3c;
+    --accent2: #ff8c00;
+    --green: #00ff88;
+    --blue: #00c8ff;
+    --purple: #b86bff;
+    --text: #f0f0f0;
+    --muted: #555;
+    --border: #2a2a2a;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Space Mono', monospace;
+    min-height: 100vh;
+    max-width: 430px;
+    margin: 0 auto;
+    overflow-x: hidden;
+    user-select: none;
+  }
+
+  /* Scanlines overlay */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,0.03) 2px,
+      rgba(0,0,0,0.03) 4px
+    );
+    pointer-events: none;
+    z-index: 999;
+  }
+
+  header {
+    padding: 20px 20px 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .logo {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 36px;
+    letter-spacing: 4px;
+    color: var(--text);
+    line-height: 1;
+  }
+
+  .logo span { color: var(--accent); }
+
+  .bpm-display {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 2px;
+  }
+
+  .bpm-label { font-size: 9px; color: var(--muted); letter-spacing: 2px; }
+  
+  .bpm-value {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 28px;
+    color: var(--accent2);
+    line-height: 1;
+    cursor: pointer;
+  }
+
+  /* Visualizer */
+  .visualizer-wrap {
+    margin: 16px 20px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+    height: 70px;
+    position: relative;
+  }
+
+  canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+
+  .vis-label {
+    position: absolute;
+    top: 6px;
+    left: 10px;
+    font-size: 9px;
+    letter-spacing: 2px;
+    color: var(--muted);
+  }
+
+  /* Record section */
+  .record-section {
+    padding: 0 20px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+
+  .record-btn {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    border: 3px solid var(--accent);
+    background: transparent;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.15s;
+    flex-shrink: 0;
+    position: relative;
+    outline: none;
+  }
+
+  .record-btn::before {
+    content: '';
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: var(--accent);
+    transition: all 0.15s;
+  }
+
+  .record-btn.recording {
+    border-color: var(--accent);
+    animation: pulse-ring 1s infinite;
+  }
+
+  .record-btn.recording::before {
+    border-radius: 4px;
+    width: 20px;
+    height: 20px;
+  }
+
+  @keyframes pulse-ring {
+    0% { box-shadow: 0 0 0 0 rgba(255,60,60,0.5); }
+    70% { box-shadow: 0 0 0 12px rgba(255,60,60,0); }
+    100% { box-shadow: 0 0 0 0 rgba(255,60,60,0); }
+  }
+
+  .record-info {
+    flex: 1;
+  }
+
+  .record-status {
+    font-size: 11px;
+    letter-spacing: 2px;
+    color: var(--muted);
+    margin-bottom: 4px;
+    text-transform: uppercase;
+  }
+
+  .record-status.active { color: var(--accent); }
+
+  .record-timer {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 32px;
+    color: var(--text);
+    letter-spacing: 2px;
+    line-height: 1;
+  }
+
+  .slot-selector {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    align-items: flex-end;
+  }
+
+  .slot-label { font-size: 9px; color: var(--muted); letter-spacing: 2px; }
+
+  .slot-dots {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 4px;
+  }
+
+  .slot-dot {
+    width: 22px;
+    height: 22px;
+    border-radius: 3px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    cursor: pointer;
+    transition: all 0.1s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 8px;
+    color: var(--muted);
+  }
+
+  .slot-dot.has-sample { border-color: var(--green); color: var(--green); }
+  .slot-dot.selected { background: var(--accent); border-color: var(--accent); color: white; }
+  .slot-dot.selected.has-sample { background: var(--green); border-color: var(--green); color: #000; }
+
+  /* Pad grid */
+  .pad-section {
+    padding: 0 16px;
+    margin-bottom: 16px;
+  }
+
+  .section-title {
+    font-size: 9px;
+    letter-spacing: 3px;
+    color: var(--muted);
+    margin-bottom: 10px;
+    padding-left: 4px;
+    text-transform: uppercase;
+  }
+
+  .pad-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+  }
+
+  .pad {
+    aspect-ratio: 1;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.08s;
+    position: relative;
+    overflow: hidden;
+    gap: 4px;
+  }
+
+  .pad::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: white;
+    opacity: 0;
+    transition: opacity 0.08s;
+    pointer-events: none;
+  }
+
+  .pad.active::after { opacity: 0.15; }
+
+  .pad.has-sample {
+    border-color: transparent;
+  }
+
+  .pad.has-sample:nth-child(1) { background: linear-gradient(135deg, #1a0a0a, #2d0f0f); border-color: #ff3c3c33; }
+  .pad.has-sample:nth-child(2) { background: linear-gradient(135deg, #0a1a0a, #0f2d0f); border-color: #00ff8833; }
+  .pad.has-sample:nth-child(3) { background: linear-gradient(135deg, #0a0a1a, #0f0f2d); border-color: #00c8ff33; }
+  .pad.has-sample:nth-child(4) { background: linear-gradient(135deg, #1a0a1a, #2d0f2d); border-color: #b86bff33; }
+  .pad.has-sample:nth-child(5) { background: linear-gradient(135deg, #1a1a0a, #2d2d0f); border-color: #ff8c0033; }
+  .pad.has-sample:nth-child(6) { background: linear-gradient(135deg, #0a1a1a, #0f2d2d); border-color: #00ff8833; }
+  .pad.has-sample:nth-child(7) { background: linear-gradient(135deg, #1a0a0a, #2d1f0f); border-color: #ff3c3c33; }
+  .pad.has-sample:nth-child(8) { background: linear-gradient(135deg, #0f0a1a, #1f0f2d); border-color: #b86bff33; }
+
+  .pad-number {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 22px;
+    line-height: 1;
+    color: var(--muted);
+  }
+
+  .pad.has-sample .pad-number { color: var(--text); }
+
+  .pad-name {
+    font-size: 8px;
+    letter-spacing: 1px;
+    color: var(--muted);
+    text-align: center;
+    padding: 0 4px;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .pad.has-sample .pad-name { color: var(--text); opacity: 0.7; }
+
+  .pad-waveform {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 20px;
+    opacity: 0.4;
+  }
+
+  .pad-delete {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    width: 16px;
+    height: 16px;
+    background: rgba(255,60,60,0.2);
+    border: none;
+    border-radius: 50%;
+    color: var(--accent);
+    font-size: 10px;
+    cursor: pointer;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+  }
+
+  .pad.has-sample:active .pad-delete,
+  .pad.has-sample.show-delete .pad-delete {
+    display: flex;
+  }
+
+  /* Sequencer */
+  .seq-section {
+    padding: 0 16px;
+    margin-bottom: 16px;
+  }
+
+  .seq-controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+
+  .seq-play {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    border: 1px solid var(--green);
+    background: transparent;
+    color: var(--green);
+    font-size: 14px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.1s;
+    outline: none;
+  }
+
+  .seq-play.playing {
+    background: var(--green);
+    color: #000;
+  }
+
+  .seq-clear {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--muted);
+    font-size: 12px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    outline: none;
+  }
+
+  .seq-label { font-size: 9px; color: var(--muted); letter-spacing: 2px; flex: 1; }
+
+  .bpm-slider {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    justify-content: flex-end;
+  }
+
+  .bpm-slider input {
+    -webkit-appearance: none;
+    width: 80px;
+    height: 3px;
+    background: var(--border);
+    border-radius: 2px;
+    outline: none;
+  }
+
+  .bpm-slider input::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--accent2);
+    cursor: pointer;
+  }
+
+  .seq-grid {
+    display: grid;
+    grid-template-rows: repeat(8, 1fr);
+    gap: 3px;
+  }
+
+  .seq-row {
+    display: grid;
+    grid-template-columns: 28px repeat(16, 1fr);
+    gap: 2px;
+    align-items: center;
+    height: 24px;
+  }
+
+  .seq-row-label {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 14px;
+    color: var(--muted);
+    text-align: center;
+    line-height: 1;
+  }
+
+  .seq-row.active-row .seq-row-label { color: var(--text); }
+
+  .seq-step {
+    height: 100%;
+    border-radius: 2px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    cursor: pointer;
+    transition: background 0.1s, border-color 0.1s;
+    position: relative;
+  }
+
+  .seq-step.on { background: var(--accent); border-color: var(--accent); }
+  .seq-step.current { border-color: var(--green) !important; }
+  .seq-step.on.current { background: var(--green); border-color: var(--green); }
+
+  /* Every 4th step gets a slight separator */
+  .seq-step:nth-child(5n+1) { margin-left: 3px; }
+
+  /* Effect controls */
+  .fx-section {
+    padding: 0 16px 24px;
+  }
+
+  .fx-row {
+    display: flex;
+    gap: 8px;
+  }
+
+  .fx-knob-wrap {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .fx-label { font-size: 8px; letter-spacing: 2px; color: var(--muted); text-align: center; }
+
+  .knob {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: var(--surface2);
+    border: 2px solid var(--border);
+    position: relative;
+    cursor: pointer;
+    touch-action: none;
+  }
+
+  .knob::before {
+    content: '';
+    position: absolute;
+    top: 4px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 3px;
+    height: 10px;
+    background: var(--text);
+    border-radius: 2px;
+    transform-origin: bottom center;
+  }
+
+  .knob-val {
+    font-size: 9px;
+    color: var(--muted);
+    text-align: center;
+    font-family: 'Space Mono', monospace;
+  }
+
+  /* Toast */
+  .toast {
+    position: fixed;
+    bottom: 30px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 10px 20px;
+    border-radius: 20px;
+    font-size: 11px;
+    letter-spacing: 1px;
+    transition: transform 0.3s;
+    z-index: 100;
+    white-space: nowrap;
+  }
+
+  .toast.show { transform: translateX(-50%) translateY(0); }
+
+  .no-mic {
+    text-align: center;
+    padding: 12px;
+    font-size: 10px;
+    color: var(--accent);
+    letter-spacing: 1px;
+    background: rgba(255,60,60,0.05);
+    border: 1px solid rgba(255,60,60,0.2);
+    border-radius: 4px;
+    margin: 0 16px 16px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">SM<span>P</span>LR</div>
+  <div class="bpm-display">
+    <div class="bpm-label">BPM</div>
+    <div class="bpm-value" id="bpmDisplay">120</div>
+  </div>
+</header>
+
+<div class="visualizer-wrap">
+  <canvas id="vizCanvas"></canvas>
+  <div class="vis-label">INPUT</div>
+</div>
+
+<div class="record-section">
+  <button class="record-btn" id="recordBtn" onclick="toggleRecord()"></button>
+  <div class="record-info">
+    <div class="record-status" id="recordStatus">READY TO RECORD</div>
+    <div class="record-timer" id="recordTimer">0.0s</div>
+  </div>
+  <div class="slot-selector">
+    <div class="slot-label">SLOT</div>
+    <div class="slot-dots" id="slotDots"></div>
+  </div>
+</div>
+
+<div class="pad-section">
+  <div class="section-title">SAMPLE PADS — tap to play · hold to delete</div>
+  <div class="pad-grid" id="padGrid"></div>
+</div>
+
+<div class="seq-section">
+  <div class="section-title">STEP SEQUENCER</div>
+  <div class="seq-controls">
+    <button class="seq-play" id="seqPlayBtn" onclick="toggleSequencer()">▶</button>
+    <button class="seq-clear" onclick="clearSequencer()" title="Clear">✕</button>
+    <div class="seq-label">16 STEPS</div>
+    <div class="bpm-slider">
+      <span style="font-size:9px;color:var(--muted)">BPM</span>
+      <input type="range" min="60" max="200" value="120" id="bpmSlider" oninput="updateBPM(this.value)">
+    </div>
+  </div>
+  <div class="seq-grid" id="seqGrid"></div>
+</div>
+
+<div class="fx-section">
+  <div class="section-title">FX</div>
+  <div class="fx-row">
+    <div class="fx-knob-wrap">
+      <div class="fx-label">VOLUME</div>
+      <div class="knob" id="knobVol" data-param="volume" data-val="80"></div>
+      <div class="knob-val" id="valVol">80</div>
+    </div>
+    <div class="fx-knob-wrap">
+      <div class="fx-label">PITCH</div>
+      <div class="knob" id="knobPitch" data-param="pitch" data-val="50"></div>
+      <div class="knob-val" id="valPitch">0</div>
+    </div>
+    <div class="fx-knob-wrap">
+      <div class="fx-label">REVERB</div>
+      <div class="knob" id="knobRev" data-param="reverb" data-val="20"></div>
+      <div class="knob-val" id="valRev">20</div>
+    </div>
+    <div class="fx-knob-wrap">
+      <div class="fx-label">LOOP</div>
+      <div class="knob" id="knobLoop" data-param="loop" data-val="0"></div>
+      <div class="knob-val" id="valLoop">OFF</div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ═══════════════════════════════════════════
+// AUDIO ENGINE
+// ═══════════════════════════════════════════
+const NUM_PADS = 8;
+const NUM_STEPS = 16;
+
+let audioCtx = null;
+let analyser = null;
+let micStream = null;
+let mediaRecorder = null;
+let recordChunks = [];
+let isRecording = false;
+let recordStart = 0;
+let recordTimerInterval = null;
+let selectedSlot = 0;
+let hasMic = false;
+
+// Sample storage
+let samples = new Array(NUM_PADS).fill(null); // {buffer, name}
+
+// FX state
+let fx = { volume: 0.8, pitch: 0, reverb: 0.2, loop: false };
+
+// Sequencer
+let seqPattern = Array.from({length: NUM_PADS}, () => new Array(NUM_STEPS).fill(false));
+let seqPlaying = false;
+let seqStep = 0;
+let seqInterval = null;
+let bpm = 120;
+
+// Pad colors for visual consistency
+const padColors = ['#ff3c3c','#00ff88','#00c8ff','#b86bff','#ff8c00','#00ff88','#ff3c3c','#b86bff'];
+
+// ═══════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════
+async function init() {
+  buildPads();
+  buildSlotDots();
+  buildSequencer();
+  setupKnobs();
+  await initAudio();
+  if (hasMic) startVisualizer();
+}
+
+async function initAudio() {
+  try {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    micStream = stream;
+    hasMic = true;
+    const source = audioCtx.createMediaStreamSource(stream);
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 256;
+    source.connect(analyser);
+  } catch (e) {
+    hasMic = false;
+    showToast('Mic access denied — tap pads to test with tone');
+  }
+}
+
+// ═══════════════════════════════════════════
+// UI BUILD
+// ═══════════════════════════════════════════
+function buildPads() {
+  const grid = document.getElementById('padGrid');
+  grid.innerHTML = '';
+  for (let i = 0; i < NUM_PADS; i++) {
+    const pad = document.createElement('div');
+    pad.className = 'pad' + (samples[i] ? ' has-sample' : '');
+    pad.id = `pad-${i}`;
+    pad.innerHTML = `
+      <div class="pad-number">${i+1}</div>
+      <div class="pad-name">${samples[i] ? samples[i].name : 'EMPTY'}</div>
+      <canvas class="pad-waveform" id="wave-${i}" width="80" height="20"></canvas>
+      <button class="pad-delete" onclick="deleteSample(event, ${i})">✕</button>
+    `;
+    pad.addEventListener('click', (e) => {
+      if (e.target.classList.contains('pad-delete')) return;
+      playSample(i);
+    });
+    pad.addEventListener('touchstart', (e) => {
+      if (e.target.classList.contains('pad-delete')) return;
+      e.preventDefault();
+      playSample(i);
+    }, {passive: false});
+    grid.appendChild(pad);
+    if (samples[i]) drawWaveform(i);
+  }
+}
+
+function buildSlotDots() {
+  const wrap = document.getElementById('slotDots');
+  wrap.innerHTML = '';
+  for (let i = 0; i < NUM_PADS; i++) {
+    const dot = document.createElement('div');
+    dot.className = 'slot-dot' +
+      (samples[i] ? ' has-sample' : '') +
+      (i === selectedSlot ? ' selected' : '');
+    dot.textContent = i + 1;
+    dot.onclick = () => { selectedSlot = i; buildSlotDots(); };
+    wrap.appendChild(dot);
+  }
+}
+
+function buildSequencer() {
+  const grid = document.getElementById('seqGrid');
+  grid.innerHTML = '';
+  for (let r = 0; r < NUM_PADS; r++) {
+    const row = document.createElement('div');
+    row.className = 'seq-row' + (samples[r] ? ' active-row' : '');
+    row.id = `seq-row-${r}`;
+    const lbl = document.createElement('div');
+    lbl.className = 'seq-row-label';
+    lbl.textContent = r + 1;
+    row.appendChild(lbl);
+    for (let c = 0; c < NUM_STEPS; c++) {
+      const step = document.createElement('div');
+      step.className = 'seq-step' + (seqPattern[r][c] ? ' on' : '');
+      step.id = `step-${r}-${c}`;
+      step.addEventListener('click', () => toggleStep(r, c));
+      step.addEventListener('touchstart', (e) => { e.preventDefault(); toggleStep(r, c); }, {passive:false});
+      row.appendChild(step);
+    }
+    grid.appendChild(row);
+  }
+}
+
+// ═══════════════════════════════════════════
+// RECORDING
+// ═══════════════════════════════════════════
+async function toggleRecord() {
+  if (!hasMic) {
+    // Generate a demo sine tone sample
+    await createDemoSample();
+    return;
+  }
+
+  if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+
+  if (isRecording) {
+    stopRecord();
+  } else {
+    startRecord();
+  }
+}
+
+function startRecord() {
+  if (!micStream) return;
+  recordChunks = [];
+  mediaRecorder = new MediaRecorder(micStream);
+  mediaRecorder.ondataavailable = e => recordChunks.push(e.data);
+  mediaRecorder.onstop = processRecording;
+  mediaRecorder.start();
+  isRecording = true;
+  recordStart = Date.now();
+  document.getElementById('recordBtn').classList.add('recording');
+  document.getElementById('recordStatus').textContent = '● RECORDING';
+  document.getElementById('recordStatus').classList.add('active');
+
+  recordTimerInterval = setInterval(() => {
+    const elapsed = ((Date.now() - recordStart) / 1000).toFixed(1);
+    document.getElementById('recordTimer').textContent = elapsed + 's';
+  }, 100);
+}
+
+function stopRecord() {
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+    mediaRecorder.stop();
+  }
+  isRecording = false;
+  clearInterval(recordTimerInterval);
+  document.getElementById('recordBtn').classList.remove('recording');
+  document.getElementById('recordStatus').textContent = 'PROCESSING...';
+  document.getElementById('recordStatus').classList.remove('active');
+}
+
+async function processRecording() {
+  const blob = new Blob(recordChunks, { type: 'audio/webm' });
+  const arrayBuffer = await blob.arrayBuffer();
+  try {
+    const decoded = await audioCtx.decodeAudioData(arrayBuffer);
+    const dur = decoded.duration.toFixed(1);
+    samples[selectedSlot] = {
+      buffer: decoded,
+      name: `REC ${dur}s`
+    };
+    document.getElementById('recordStatus').textContent = `SAVED → PAD ${selectedSlot+1}`;
+    document.getElementById('recordTimer').textContent = dur + 's';
+    buildPads();
+    buildSlotDots();
+    buildSequencer();
+    showToast(`Sample saved to pad ${selectedSlot + 1}`);
+    // Auto-advance slot
+    if (selectedSlot < NUM_PADS - 1) selectedSlot++;
+    buildSlotDots();
+  } catch(e) {
+    document.getElementById('recordStatus').textContent = 'ERROR — try again';
+    showToast('Could not decode audio');
+  }
+}
+
+async function createDemoSample() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  if (audioCtx.state === 'suspended') await audioCtx.resume();
+
+  const frequencies = [130, 165, 196, 220, 261, 330, 392, 440];
+  const freq = frequencies[selectedSlot];
+  const duration = 0.5;
+  const sr = audioCtx.sampleRate;
+  const buf = audioCtx.createBuffer(1, sr * duration, sr);
+  const data = buf.getChannelData(0);
+  for (let i = 0; i < data.length; i++) {
+    const t = i / sr;
+    const env = Math.exp(-t * 4);
+    data[i] = env * (Math.sin(2 * Math.PI * freq * t) + 0.3 * Math.sin(4 * Math.PI * freq * t));
+  }
+  samples[selectedSlot] = { buffer: buf, name: `TONE ${freq}hz` };
+  buildPads();
+  buildSlotDots();
+  buildSequencer();
+  showToast(`Demo tone → pad ${selectedSlot + 1}`);
+  if (selectedSlot < NUM_PADS - 1) selectedSlot++;
+  buildSlotDots();
+}
+
+// ═══════════════════════════════════════════
+// PLAYBACK
+// ═══════════════════════════════════════════
+let reverbNode = null;
+
+async function getReverbNode() {
+  if (reverbNode) return reverbNode;
+  const convolver = audioCtx.createConvolver();
+  const length = audioCtx.sampleRate * 2;
+  const impulse = audioCtx.createBuffer(2, length, audioCtx.sampleRate);
+  for (let c = 0; c < 2; c++) {
+    const d = impulse.getChannelData(c);
+    for (let i = 0; i < length; i++) {
+      d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / length, 3);
+    }
+  }
+  convolver.buffer = impulse;
+  reverbNode = convolver;
+  return convolver;
+}
+
+async function playSample(padIndex) {
+  const sample = samples[padIndex];
+  if (!sample) {
+    // Demo tone
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') await audioCtx.resume();
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.frequency.value = [130, 165, 196, 220, 261, 330, 392, 440][padIndex] || 220;
+    gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.3);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start();
+    osc.stop(audioCtx.currentTime + 0.3);
+    flashPad(padIndex);
+    return;
+  }
+
+  if (audioCtx.state === 'suspended') await audioCtx.resume();
+
+  const source = audioCtx.createBufferSource();
+  source.buffer = sample.buffer;
+  source.loop = fx.loop;
+
+  // Pitch
+  source.playbackRate.value = Math.pow(2, fx.pitch / 12);
+
+  // Volume
+  const gainNode = audioCtx.createGain();
+  gainNode.gain.value = fx.volume;
+
+  // Reverb
+  if (fx.reverb > 0.05) {
+    const wet = audioCtx.createGain();
+    const dry = audioCtx.createGain();
+    wet.gain.value = fx.reverb;
+    dry.gain.value = 1 - fx.reverb * 0.5;
+    const rev = await getReverbNode();
+    source.connect(dry);
+    source.connect(rev);
+    rev.connect(wet);
+    dry.connect(gainNode);
+    wet.connect(gainNode);
+  } else {
+    source.connect(gainNode);
+  }
+
+  gainNode.connect(audioCtx.destination);
+  source.start();
+  flashPad(padIndex);
+}
+
+function flashPad(i) {
+  const pad = document.getElementById(`pad-${i}`);
+  if (!pad) return;
+  pad.classList.add('active');
+  setTimeout(() => pad.classList.remove('active'), 120);
+}
+
+function deleteSample(e, i) {
+  e.stopPropagation();
+  samples[i] = null;
+  seqPattern[i].fill(false);
+  buildPads();
+  buildSlotDots();
+  buildSequencer();
+  showToast(`Pad ${i+1} cleared`);
+}
+
+// ═══════════════════════════════════════════
+// SEQUENCER
+// ═══════════════════════════════════════════
+function toggleStep(row, col) {
+  seqPattern[row][col] = !seqPattern[row][col];
+  const el = document.getElementById(`step-${row}-${col}`);
+  el.classList.toggle('on', seqPattern[row][col]);
+}
+
+function toggleSequencer() {
+  if (seqPlaying) {
+    stopSequencer();
+  } else {
+    startSequencer();
+  }
+}
+
+function startSequencer() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  seqPlaying = true;
+  seqStep = 0;
+  const btn = document.getElementById('seqPlayBtn');
+  btn.textContent = '■';
+  btn.classList.add('playing');
+
+  const stepMs = (60 / bpm / 4) * 1000; // 16th notes
+  seqInterval = setInterval(tickSequencer, stepMs);
+}
+
+function stopSequencer() {
+  seqPlaying = false;
+  clearInterval(seqInterval);
+  const btn = document.getElementById('seqPlayBtn');
+  btn.textContent = '▶';
+  btn.classList.remove('playing');
+  // Clear current highlights
+  document.querySelectorAll('.seq-step.current').forEach(el => el.classList.remove('current'));
+}
+
+function tickSequencer() {
+  // Clear previous step highlight
+  const prev = (seqStep - 1 + NUM_STEPS) % NUM_STEPS;
+  for (let r = 0; r < NUM_PADS; r++) {
+    const el = document.getElementById(`step-${r}-${prev}`);
+    if (el) el.classList.remove('current');
+  }
+
+  // Highlight current step & trigger
+  for (let r = 0; r < NUM_PADS; r++) {
+    const el = document.getElementById(`step-${r}-${seqStep}`);
+    if (el) el.classList.add('current');
+    if (seqPattern[r][seqStep]) {
+      playSample(r);
+    }
+  }
+
+  seqStep = (seqStep + 1) % NUM_STEPS;
+}
+
+function clearSequencer() {
+  seqPattern = Array.from({length: NUM_PADS}, () => new Array(NUM_STEPS).fill(false));
+  buildSequencer();
+}
+
+function updateBPM(val) {
+  bpm = parseInt(val);
+  document.getElementById('bpmDisplay').textContent = bpm;
+  if (seqPlaying) {
+    stopSequencer();
+    startSequencer();
+  }
+}
+
+// ═══════════════════════════════════════════
+// VISUALIZER
+// ═══════════════════════════════════════════
+function startVisualizer() {
+  const canvas = document.getElementById('vizCanvas');
+  const ctx = canvas.getContext('2d');
+
+  function draw() {
+    requestAnimationFrame(draw);
+    canvas.width = canvas.offsetWidth;
+    canvas.height = canvas.offsetHeight;
+
+    if (!analyser) return;
+    const bufLen = analyser.frequencyBinCount;
+    const data = new Uint8Array(bufLen);
+    analyser.getByteTimeDomainData(data);
+
+    ctx.fillStyle = '#141414';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = '#ff3c3c';
+    ctx.beginPath();
+
+    const sliceW = canvas.width / bufLen;
+    let x = 0;
+    for (let i = 0; i < bufLen; i++) {
+      const v = data[i] / 128;
+      const y = (v * canvas.height) / 2;
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+      x += sliceW;
+    }
+    ctx.lineTo(canvas.width, canvas.height / 2);
+    ctx.stroke();
+  }
+
+  draw();
+}
+
+function drawWaveform(padIndex) {
+  const sample = samples[padIndex];
+  if (!sample) return;
+  const canvas = document.getElementById(`wave-${padIndex}`);
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const data = sample.buffer.getChannelData(0);
+  const step = Math.floor(data.length / canvas.width);
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.strokeStyle = padColors[padIndex] + '99';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+
+  for (let i = 0; i < canvas.width; i++) {
+    const v = data[i * step] || 0;
+    const y = ((v + 1) / 2) * canvas.height;
+    i === 0 ? ctx.moveTo(i, y) : ctx.lineTo(i, y);
+  }
+  ctx.stroke();
+}
+
+// ═══════════════════════════════════════════
+// KNOBS
+// ═══════════════════════════════════════════
+function setupKnobs() {
+  const knobs = document.querySelectorAll('.knob');
+  knobs.forEach(knob => {
+    let startY, startVal;
+    const param = knob.dataset.param;
+    let val = parseInt(knob.dataset.val);
+    updateKnob(knob, val);
+
+    knob.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      startY = e.touches[0].clientY;
+      startVal = val;
+    }, {passive: false});
+
+    knob.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      const dy = startY - e.touches[0].clientY;
+      val = Math.max(0, Math.min(100, startVal + dy));
+      knob.dataset.val = val;
+      updateKnob(knob, val);
+      applyFX(param, val);
+    }, {passive: false});
+
+    // Mouse support too
+    knob.addEventListener('mousedown', (e) => {
+      startY = e.clientY;
+      startVal = val;
+      const move = (ev) => {
+        const dy = startY - ev.clientY;
+        val = Math.max(0, Math.min(100, startVal + dy));
+        knob.dataset.val = val;
+        updateKnob(knob, val);
+        applyFX(param, val);
+      };
+      const up = () => {
+        document.removeEventListener('mousemove', move);
+        document.removeEventListener('mouseup', up);
+      };
+      document.addEventListener('mousemove', move);
+      document.addEventListener('mouseup', up);
+    });
+  });
+}
+
+function updateKnob(knob, val) {
+  const deg = -135 + (val / 100) * 270;
+  knob.querySelector('::before') // can't select pseudo — use transform on knob itself
+  knob.style.setProperty('--rot', deg + 'deg');
+  knob.style.transform = `rotate(${deg}deg)`;
+
+  const param = knob.dataset.param;
+  const dispId = {volume:'valVol', pitch:'valPitch', reverb:'valRev', loop:'valLoop'}[param];
+  if (!dispId) return;
+  const disp = document.getElementById(dispId);
+  if (!disp) return;
+  if (param === 'pitch') disp.textContent = (Math.round((val - 50) / 4.16)) + 'st';
+  else if (param === 'loop') disp.textContent = val > 50 ? 'ON' : 'OFF';
+  else disp.textContent = Math.round(val);
+}
+
+function applyFX(param, val) {
+  if (param === 'volume') fx.volume = val / 100;
+  else if (param === 'pitch') fx.pitch = (val - 50) / 4.16;
+  else if (param === 'reverb') fx.reverb = val / 100;
+  else if (param === 'loop') fx.loop = val > 50;
+}
+
+// ═══════════════════════════════════════════
+// TOAST
+// ═══════════════════════════════════════════
+let toastTimer;
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 2000);
+}
+
+// ═══════════════════════════════════════════
+// BOOT
+// ═══════════════════════════════════════════
+window.addEventListener('load', init);
+
+// Resume AudioContext on any touch (iOS requirement)
+document.addEventListener('touchstart', () => {
+  if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+}, { once: true });
+</script>
+</body>
+</html>
